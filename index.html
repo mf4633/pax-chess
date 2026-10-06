@@ -169,6 +169,7 @@ select:focus-visible, button.btn:focus-visible { outline: 3px solid var(--accent
           <button class="btn primary" id="newGame">New game</button>
           <button class="btn" id="undo">Take back</button>
           <button class="btn" id="hint">Hint</button>
+          <button class="btn" id="resign">Resign</button>
         </div>
         <p class="note" id="hintText"></p>
       </section>
@@ -347,7 +348,7 @@ async function review() {
 }
 async function endGame() {
   if (S.ended) return; S.ended = true;
-  const g = S.game; const lost = g.in_checkmate() && g.turn() === S.pax, won = g.in_checkmate() && g.turn() !== S.pax;
+  const g = S.game; const lost = g.in_checkmate() && g.turn() === S.pax, won = S.resigned || g.in_checkmate() && g.turn() !== S.pax;
   if (lost) S.stats.l++; else if (won) S.stats.w++; else S.stats.d++;
   S.busy = true; render();
   const out = await review();
@@ -377,7 +378,7 @@ async function youMove(from, to) {
   render(); await paxTurn();
 }
 function newGame() {
-  S.gen++; S.game = new Chess(); S.tags = []; S.sel = null; S.last = null; S.trace = null; S.ended = false; S.busy = false; S.curve = null; S.pnrPly = null; S.lastLesson = null;
+  S.gen++; S.game = new Chess(); S.tags = []; S.sel = null; S.last = null; S.trace = null; S.ended = false; S.busy = false; S.curve = null; S.pnrPly = null; S.lastLesson = null; S.resigned = false; S.resignArmed = false;
   $('hintText').textContent = ''; render(); if (S.pax === 'w') paxTurn();
 }
 
@@ -424,7 +425,7 @@ function renderCurve() {
   const l = S.lastLesson;
   $('lessonText').innerHTML = l
     ? `The game slipped away at <strong>${l.label}</strong>: PAX's chances went from ${Math.round(l.before * 100)}% to ${Math.round(l.after * 100)}% and never came back. ${opt().learn ? 'PAX has learned from it and will judge that position, and others like it, as lost.' : 'Learning is off, so PAX did not learn from it.'}`
-    : S.ended ? (S.game.in_checkmate() ? '<b>PAX wins.</b> Nothing to learn from this one.' : 'A draw. PAX learns only from losses.') : '';
+    : S.ended ? (S.resigned || S.game.in_checkmate() ? '<b>PAX wins.</b> Nothing to learn from this one.' : 'A draw. PAX learns only from losses.') : '';
 }
 function renderLearned() {
   $('sW').textContent = S.stats.w; $('sD').textContent = S.stats.d; $('sL').textContent = S.stats.l;
@@ -441,7 +442,8 @@ function renderMoves() {
 function renderClock() {
   const g = S.game;
   if (!S.loaded || S.busy && S.ended) return;
-  if (g.in_checkmate()) setClock(g.turn() === S.pax ? 'PAX FEELS UTTER DISPAIR AND RESIGNS. WELL DONE!' : 'PAX WINS! CHECKMATE.');
+  if (S.resigned) setClock('YOU RESIGN. PAX WINS.');
+  else if (g.in_checkmate()) setClock(g.turn() === S.pax ? 'PAX FEELS UTTER DISPAIR AND RESIGNS. WELL DONE!' : 'PAX WINS! CHECKMATE.');
   else if (g.game_over()) setClock('DRAW.');
   else if (S.busy || g.turn() === S.pax) setClock('PAX IS THINKING…');
   else setClock((g.in_check() ? 'CHECK! ' : '') + (g.turn() === 'w' ? 'WHITE' : 'BLACK') + ' ON CLOCK…');
@@ -450,6 +452,7 @@ function render() {
   renderBoard(); renderTrace(); renderCurve(); renderLearned(); renderMoves(); renderClock();
   const lock = !S.loaded || S.busy;
   $('newGame').disabled = lock; $('undo').disabled = lock || !S.game.history().length || S.ended; $('hint').disabled = lock || S.ended || S.game.turn() === S.pax;
+  $('resign').disabled = lock || S.ended || !S.game.history().length; $('resign').textContent = S.resignArmed ? 'Click again to resign' : 'Resign';
   for (const id of ['paxColor', 'erase']) $(id).disabled = lock;
 }
 
@@ -474,6 +477,10 @@ $('hint').onclick = async () => {
   if (bm) { $('hintText').innerHTML = `Dorfman's book plays <b>${bm.san}</b> here.`; }
   else { const r = await engine({ type: 'search', fen: g.fen(), moves: legal.map(uci), timeMs: 1200, variety: 0 }); const m = legal.find(x => uci(x) === r.uci); $('hintText').innerHTML = `PAX suggests <b>${m ? m.san : r.uci}</b>.`; }
   S.busy = false; render();
+};
+$('resign').onclick = async () => {
+  if (!S.resignArmed) { S.resignArmed = true; render(); setTimeout(() => { S.resignArmed = false; render(); }, 4000); return; }
+  S.resignArmed = false; S.resigned = true; await endGame(); render();
 };
 $('paxColor').onchange = e => { S.pax = e.target.value; newGame(); };
 $('learning').onchange = render;
