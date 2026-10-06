@@ -32,7 +32,7 @@ Everything below comes from the PAX 2001 release (`PAX.EXE`, build 11.17.01, and
 ## What is new
 
 - **Judgement.** Middlegame and endgame piece-square tables, fitted by gradient descent (Texel-style tuning) to Stockfish's scores on about 900,000 positions from games that start in his book. A small NNUE-style network was tried first. It was no more accurate and searched ten times slower, so the tables won.
-- **Learning from losses.** After a loss, PAX replays the game and finds the *point of no return*, the last moment its winning chances were above 35%. The PAX move right after it becomes a lesson. Each lesson nudges the tables so similar positions are judged differently too, and is also kept as a never-enter position, his 1996 rule. Lessons live in your browser's local storage and are replayed every time the page opens.
+- **Learning from losses.** After a loss, PAX replays the game and finds the *point of no return*, the last moment its winning chances were above 35%. The PAX move right after it becomes a lesson. Each lesson nudges the tables so similar positions are judged differently too, and is also kept as a never-enter position, his 1996 rule. Lessons live in your browser's local storage and are replayed every time the page opens. For the same idea on a game small enough for it to work perfectly, see the [tic-tac-toe single-trial learner](https://mf4633.github.io/pax-chess/tictactoe.html).
 - **Strength.** In testing against Stockfish at limited strength, PAX 2.0 rated about 1550 and the original PAX about 1560, the same within the margin of error.
 
 PAX 2.0 is a tribute, not his code. The engine, page and tools here were written new.
@@ -42,6 +42,7 @@ PAX 2.0 is a tribute, not his code. The engine, page and tools here were written
 | Path | What |
 |---|---|
 | `index.html` | The page. Static, with no build step. Loads chess.js 0.10.3 from cdnjs. |
+| `tictactoe.html` | His single-trial learning on tic-tac-toe, for comparison ([live](https://mf4633.github.io/pax-chess/tictactoe.html)). A reconstruction from the book, not his code. |
 | `engine.js` | Search and evaluation. Runs as a Web Worker and also loads in Node. |
 | `tables.json` | The tuned piece-square tables. |
 | `mark10w.txt` | Dorfman's opening book (see above). |

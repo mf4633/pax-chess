@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Single-trial learning on tic-tac-toe, after Dorfman and Ghosh, Developing Games That Learn (1996). A companion to PAX 2.0.">
+<title>Single-Trial Learner</title>
+<style>body{margin:0}[hidden]{display:none!important}</style>
+</head>
+<body>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: teacher's grading sheet — graph-paper board on the left, red-pen "lessons" on the right; stacks to one column on phones */
+:root {
+  --bg: #f2f4f7; --surface: #ffffff; --grid: #d9e2ee; --line: #cbd4e1;
+  --ink: #1c2431; --muted: #5a677b; --o: #1d4fc4; --x: #2b323e;
+  --red: #c42f28; --red-soft: #fbe4e1; --ok: #23784a;
+  --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #10141b; --surface: #171d27; --grid: #243041; --line: #2b3648;
+  --ink: #e3e8f0; --muted: #98a4b7; --o: #7ea4ff; --x: #d5dae3;
+  --red: #ff6f62; --red-soft: #3b1f1d; --ok: #5cc98b; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #10141b; --surface: #171d27; --grid: #243041; --line: #2b3648;
+  --ink: #e3e8f0; --muted: #98a4b7; --o: #7ea4ff; --x: #d5dae3;
+  --red: #ff6f62; --red-soft: #3b1f1d; --ok: #5cc98b; color-scheme: dark }
+
+body { background: var(--bg); color: var(--ink); font: 16px/1.55 var(--f-body); padding-inline: 16px; padding-block: 28px 48px; }
+.wrap { max-width: 1120px; margin: 0 auto; display: grid; gap: 28px; }
+h1, h2 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(1.9rem, 4.5vw, 2.8rem); font-weight: 800; letter-spacing: -0.02em; line-height: 1.05; }
+h2 { font-size: 1.15rem; font-weight: 600; }
+.lede { max-width: 66ch; color: var(--muted); margin: 10px 0 0; }
+.lede em { color: var(--ink); font-style: italic; }
+.eyebrow { font: 600 0.72rem/1 var(--f-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--red); margin-bottom: 10px; }
+.cols { display: grid; grid-template-columns: minmax(0, 360px) minmax(0, 1fr); gap: 28px; align-items: start; }
+@media (max-width: 860px) { .cols { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: grid; gap: 14px; min-width: 0; }
+.side { display: grid; gap: 20px; min-width: 0; }
+
+/* board */
+.board { display: grid; grid-template-columns: repeat(3, 1fr); width: 100%; max-width: 324px; aspect-ratio: 1; margin: 0 auto;
+  background-color: var(--surface);
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 13.5px 13.5px; border: 2px solid var(--ink); }
+.cell { appearance: none; border: 0; background: transparent; padding: 14%; cursor: pointer; display: grid; place-items: center; color: var(--ink); }
+.cell:nth-child(3n+1), .cell:nth-child(3n+2) { border-right: 2px solid var(--ink); }
+.cell:nth-child(-n+6) { border-bottom: 2px solid var(--ink); }
+.cell:disabled { cursor: default; }
+.cell:focus-visible { outline: 3px solid var(--o); outline-offset: -5px; }
+.cell svg { width: 100%; height: 100%; overflow: visible; }
+.cell .mx { stroke: var(--x); } .cell .mo { stroke: var(--o); }
+.cell.win { background: var(--red-soft); }
+.cell.oWin { background: color-mix(in srgb, var(--ok) 18%, transparent); }
+@media (prefers-reduced-motion: no-preference) { .cell svg .draw { stroke-dasharray: 100; stroke-dashoffset: 100; animation: pen .28s ease-out forwards; } }
+@keyframes pen { to { stroke-dashoffset: 0; } }
+
+.status { min-height: 3.1em; font-size: 0.95rem; text-align: center; }
+.status b { font-family: var(--f-display); }
+.legend { display: flex; gap: 16px; justify-content: center; font-size: .85rem; color: var(--muted); flex-wrap: wrap; }
+.legend span::before { content: ""; display: inline-block; width: .7em; height: .7em; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+.legend .lx::before { background: var(--x); } .legend .lo::before { background: var(--o); }
+
+label.field { display: grid; gap: 6px; font-size: .85rem; color: var(--muted); }
+select, button.btn { font: inherit; font-size: .92rem; border-radius: 7px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); padding: 8px 11px; }
+select:focus-visible, button.btn:focus-visible, input:focus-visible { outline: 3px solid var(--o); outline-offset: 2px; }
+.btns { display: flex; flex-wrap: wrap; gap: 8px; }
+button.btn { cursor: pointer; font-weight: 700; }
+button.btn.primary { background: var(--o); border-color: var(--o); color: var(--surface); }
+button.btn.danger { color: var(--red); }
+button.btn:disabled { opacity: .45; cursor: default; }
+.check { display: flex; gap: 8px; align-items: flex-start; font-size: .88rem; color: var(--muted); }
+.check input { margin-top: 4px; accent-color: var(--o); }
+
+/* stats */
+.stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.stat { padding: 10px 12px; border-right: 1px solid var(--line); min-width: 0; }
+.stat:last-child { border-right: 0; }
+.stat .v { font: 600 1.35rem/1.1 var(--f-mono); font-variant-numeric: tabular-nums; }
+.stat .k { font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.stat.loss .v { color: var(--red); } .stat.mem .v { color: var(--o); }
+@media (max-width: 560px) { .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } .stat:nth-child(3) { border-right: 0; } .stat:nth-child(-n+3) { border-bottom: 1px solid var(--line); } }
+
+.chart svg { width: 100%; height: auto; display: block; }
+.chart .axis { stroke: var(--line); } .chart text { fill: var(--muted); font: 11px var(--f-mono); }
+.chart .curve { fill: none; stroke: var(--red); stroke-width: 2; } .chart .area { fill: var(--red-soft); }
+.chart .mem { fill: none; stroke: var(--o); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.note { font-size: .85rem; color: var(--muted); margin: 0; }
+
+/* mini boards */
+.strip { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; }
+.step { display: grid; gap: 4px; justify-items: center; flex: none; }
+.step .lbl { font: 600 .68rem/1 var(--f-mono); color: var(--muted); letter-spacing: .04em; }
+.step.marked .lbl { color: var(--red); }
+.mini { display: grid; grid-template-columns: repeat(3, 16px); grid-auto-rows: 16px; border: 1px solid var(--line); background: var(--surface); }
+.mini i { font: 600 11px/16px var(--f-mono); text-align: center; font-style: normal; border-right: 1px solid var(--grid); border-bottom: 1px solid var(--grid); }
+.mini i:nth-child(3n) { border-right: 0; } .mini i:nth-child(n+7) { border-bottom: 0; }
+.mini .X { color: var(--x); } .mini .O { color: var(--o); }
+.mini i.hot { background: var(--red-soft); color: var(--red); outline: 1.5px solid var(--red); outline-offset: -1.5px; }
+.step.marked .mini { border: 2px solid var(--red); }
+.memgrid { display: flex; flex-wrap: wrap; gap: 8px; max-height: 260px; overflow-y: auto; }
+.memgrid .mini { border-color: var(--red); }
+.memgrid .mini.prop { border-style: dashed; }
+.empty { color: var(--muted); font-size: .9rem; margin: 0; }
+.lessonText { margin: 0; font-size: .95rem; max-width: 70ch; }
+.lessonText strong { color: var(--red); }
+
+ol.how { margin: 0; padding-left: 1.3em; display: grid; gap: 8px; max-width: 72ch; }
+ol.how li::marker { font-family: var(--f-mono); color: var(--red); font-weight: 600; }
+.foot { font-size: .82rem; color: var(--muted); max-width: 80ch; }
+.foot a { color: var(--o); }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">After Dorfman &amp; Ghosh, <i>Developing Games That Learn</i> (1996)</div>
+    <h1>Single-Trial Learner</h1>
+    <p class="lede">The <span style="color:var(--o);font-weight:700">O</span> player starts knowing only the rules and picks moves at random. Each time it loses, it walks back from the loss to its <em>point of no return</em>, the last position where it still had a choice, and remembers that position as never-enter. One loss is enough to learn each lesson.</p>
+  </header>
+
+  <div class="cols">
+    <section class="panel" aria-label="Game board">
+      <div class="legend"><span class="lx">X opponent (moves first)</span><span class="lo">O learner</span></div>
+      <div class="board" id="board"></div>
+      <div class="status" id="status" aria-live="polite"></div>
+      <label class="field" for="opp">X is played by
+        <select id="opp">
+          <option value="perfect">Perfect play (minimax)</option>
+          <option value="sharp">Sharp: takes wins, blocks, else random</option>
+          <option value="random">Random</option>
+          <option value="human">You — click a square</option>
+        </select>
+      </label>
+      <div class="btns">
+        <button class="btn primary" id="watch">Play a game</button>
+        <button class="btn" id="t100">Train 100</button>
+        <button class="btn" id="t1000">Train 1,000</button>
+      </div>
+      <label class="check" for="sym"><input type="checkbox" id="sym" checked> <span>Treat rotated and mirrored boards as the same position. Off, it needs several thousand games instead of a few hundred.</span></label>
+      <div class="btns"><button class="btn danger" id="reset">Erase memory</button></div>
+    </section>
+
+    <div class="side">
+      <section class="panel" aria-label="Progress">
+        <h2>Progress</h2>
+        <div class="stats">
+          <div class="stat"><div class="v" id="sGames">0</div><div class="k">Games</div></div>
+          <div class="stat loss"><div class="v" id="sLoss">0</div><div class="k">O losses</div></div>
+          <div class="stat"><div class="v" id="sDraw">0</div><div class="k">Draws</div></div>
+          <div class="stat"><div class="v" id="sWin">0</div><div class="k">O wins</div></div>
+          <div class="stat mem"><div class="v" id="sMem">0</div><div class="k">Remembered</div></div>
+        </div>
+        <div class="chart" id="chart"></div>
+        <p class="note" id="recent"></p>
+      </section>
+
+      <section class="panel" aria-label="Last lesson">
+        <h2>Last lesson</h2>
+        <p class="lessonText" id="lessonText"></p>
+        <div class="strip" id="strip"></div>
+      </section>
+
+      <section class="panel" aria-label="Memory">
+        <h2>Never-enter positions</h2>
+        <p class="note">Each board is a position the learner will refuse to move into. Solid border: the point of no return found right after a loss. Dashed: a position added when the blame walked further back, because every choice from there was already known to lose.</p>
+        <div class="memgrid" id="mem"></div>
+      </section>
+    </div>
+  </div>
+
+  <section class="panel" aria-label="How it works">
+    <h2>What happens after a loss</h2>
+    <ol class="how">
+      <li>Take the position just before X's winning move. X had a win from there, so it's lost. Mark it never-enter.</li>
+      <li>Step back to the position where O chose the move that led there. List every move O could have made.</li>
+      <li>If every one of those moves leads to a position already marked, O had no real choice. That position was lost too, so mark the position O's previous move created and step back again.</li>
+      <li>Stop at the first decision where O had a move not yet known to lose. That move was the mistake. The blame never goes further back than one loss proves.</li>
+    </ol>
+    <p class="foot">Positions are stored as board layouts, not move sequences, so the learner avoids a losing position however it would get there. Every mark is a true forced loss, so the learner never throws away a good move. Against perfect play it ends up never losing. This is a reconstruction from the book's published description, not the authors' code. It is the small-game version of the learning in <a href="./">PAX 2.0</a>, where chess positions rarely repeat and blame is harder to place.</p>
+  </section>
+</div>
+
+<script>
+(() => {
+const WINS = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+const SYM = [[0,1,2,3,4,5,6,7,8],[6,3,0,7,4,1,8,5,2],[8,7,6,5,4,3,2,1,0],[2,5,8,1,4,7,0,3,6],
+             [2,1,0,5,4,3,8,7,6],[6,7,8,3,4,5,0,1,2],[0,3,6,1,4,7,2,5,8],[8,5,2,7,4,1,6,3,0]];
+const $ = id => document.getElementById(id);
+const empties = b => b.reduce((a, c, i) => (c ? a : (a.push(i), a)), []);
+const place = (b, i, p) => { const n = b.slice(); n[i] = p; return n; };
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const str = b => b.map(c => c || '.').join('');
+function winLine(b) { for (const l of WINS) { const [a, c, d] = l; if (b[a] && b[a] === b[c] && b[a] === b[d]) return l; } return null; }
+function result(b) { const l = winLine(b); if (l) return b[l[0]]; return b.includes('') ? null : 'draw'; }
+
+const S = {
+  lost: new Map(), sym: true, mode: 'perfect',
+  stats: { games: 0, losses: 0, draws: 0, wins: 0 }, curve: [], memCurve: [], recent: [],
+  lesson: null, board: Array(9).fill(''), hist: null, busy: false, msg: '', lastMove: -1
+};
+
+function key(b) {
+  if (!S.sym) return str(b);
+  let best = null;
+  for (const p of SYM) { const s = p.map(i => b[i] || '.').join(''); if (best === null || s < best) best = s; }
+  return best;
+}
+const isLost = b => S.lost.has(key(b));
+function addLost(b, game, kind) { const k = key(b); if (!S.lost.has(k)) S.lost.set(k, { board: b.slice(), game, kind }); }
+function rekey() { const old = [...S.lost.values()]; S.lost = new Map(); for (const v of old) addLost(v.board, v.game, v.kind); }
+
+// ---- X opponents ----
+const memo = new Map();
+function value(b, turn) {               // +1 X wins, 0 draw, -1 O wins (perfect play both sides)
+  const r = result(b);
+  if (r === 'X') return 1; if (r === 'O') return -1; if (r === 'draw') return 0;
+  const k = str(b) + turn; if (memo.has(k)) return memo.get(k);
+  let best = turn === 'X' ? -2 : 2;
+  for (const i of empties(b)) {
+    const v = value(place(b, i, turn), turn === 'X' ? 'O' : 'X');
+    best = turn === 'X' ? Math.max(best, v) : Math.min(best, v);
+  }
+  memo.set(k, best); return best;
+}
+function xPerfect(b) {
+  const scored = empties(b).map(i => [i, value(place(b, i, 'X'), 'O')]);
+  const top = Math.max(...scored.map(s => s[1]));
+  return pick(scored.filter(s => s[1] === top).map(s => s[0]));
+}
+function xSharp(b) {
+  const e = empties(b);
+  for (const p of ['X', 'O']) { const w = e.filter(i => result(place(b, i, p)) === p); if (w.length) return pick(w); }
+  return pick(e);
+}
+const xMove = b => S.mode === 'perfect' ? xPerfect(b) : S.mode === 'sharp' ? xSharp(b) : pick(empties(b));
+
+// ---- the learner ----
+function oMove(b) {
+  const e = empties(b);
+  const safe = e.filter(i => !isLost(place(b, i, 'O')));
+  return { move: pick(safe.length ? safe : e), avoided: e.length - safe.length, cornered: !safe.length };
+}
+
+function learn(h, game) {
+  // h[0] = empty board (X to move); odd indices follow X moves, even indices follow O moves.
+  let i = h.length - 2;                 // position after O's last move, from which X won
+  const marked = [];
+  for (;;) {
+    addLost(h[i], game, marked.length ? 'prop' : 'direct'); marked.push(i);
+    if (i === 0) break;                 // would mean the whole game is lost for O
+    const q = h[i - 1];                 // O was to move here
+    const allLost = empties(q).every(m => isLost(place(q, m, 'O')));
+    if (!allLost) break;
+    i -= 2;                             // O had no real choice; blame the O move before it
+  }
+  const blameCell = i > 0 ? h[i].findIndex((c, j) => c !== h[i - 1][j]) : -1;
+  S.lesson = { h, marked, blame: i, blameCell, game };
+}
+
+function finish(h) {
+  const r = result(h[h.length - 1]);
+  const st = S.stats; st.games++;
+  if (r === 'X') { st.losses++; learn(h, st.games); }
+  else if (r === 'O') st.wins++; else st.draws++;
+  S.curve.push(st.losses); S.memCurve.push(S.lost.size);
+  S.recent.push(r === 'X' ? 1 : 0); if (S.recent.length > 100) S.recent.shift();
+  return r;
+}
+
+function simulate() {
+  let b = Array(9).fill(''); const h = [b]; let t = 'X';
+  while (!result(b)) { const m = t === 'X' ? xMove(b) : oMove(b).move; b = place(b, m, t); h.push(b); t = t === 'X' ? 'O' : 'X'; }
+  S.board = b; S.lastMove = -1; return finish(h);
+}
+
+function train(n) {
+  if (S.mode === 'human') return;
+  let l = 0; for (let k = 0; k < n; k++) if (simulate() === 'X') l++;
+  S.hist = null;
+  S.msg = `Trained ${n.toLocaleString()} games against ${label()}. O lost <b>${l}</b> of them.`;
+  render();
+}
+const label = () => ({ perfect: 'perfect play', sharp: 'the sharp player', random: 'random play', human: 'you' })[S.mode];
+
+// ---- interactive play ----
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function newInteractive() { S.board = Array(9).fill(''); S.hist = [S.board]; S.lastMove = -1; }
+function endMsg(r) {
+  if (r === 'X') {
+    const L = S.lesson, n = L.marked.length;
+    return `<b>X wins.</b> O learned ${n === 1 ? 'one new position' : n + ' new positions'} from this loss.`;
+  }
+  return r === 'O' ? '<b>O wins.</b>' : '<b>Draw.</b> O found no losing line this game.';
+}
+async function oTurn() {
+  const r0 = oMove(S.board);
+  await sleep(320);
+  S.board = place(S.board, r0.move, 'O'); S.hist.push(S.board); S.lastMove = r0.move;
+  const tail = r0.cornered ? ' Every move it has is a known loss, so it picked one anyway.'
+    : r0.avoided ? ` It skipped ${r0.avoided} move${r0.avoided > 1 ? 's' : ''} it remembers losing from.` : '';
+  S.msg = `O played square ${r0.move + 1}.${tail}`;
+}
+async function watchGame() {
+  if (S.busy) return; S.busy = true; newInteractive(); S.msg = 'X to move…'; render();
+  let r;
+  while (!(r = result(S.board))) {
+    await sleep(320);
+    const m = xMove(S.board); S.board = place(S.board, m, 'X'); S.hist.push(S.board); S.lastMove = m; render();
+    if ((r = result(S.board))) break;
+    await oTurn(); render();
+  }
+  finish(S.hist); S.msg = endMsg(r); S.busy = false; render();
+}
+async function humanClick(i) {
+  if (S.busy || S.mode !== 'human') return;
+  if (!S.hist || result(S.board)) newInteractive();
+  if (S.board[i]) return;
+  S.busy = true;
+  S.board = place(S.board, i, 'X'); S.hist.push(S.board); S.lastMove = i; render();
+  let r = result(S.board);
+  if (!r) { await oTurn(); render(); r = result(S.board); }
+  if (r) { finish(S.hist); S.msg = endMsg(r) + ' Click any square to start again.'; }
+  else S.msg += ' Your move.';
+  S.busy = false; render();
+}
+
+// ---- rendering ----
+const XSVG = '<svg viewBox="0 0 100 100"><path class="mx draw" pathLength="100" d="M18 18 L82 82" stroke-width="9" stroke-linecap="round" fill="none"/><path class="mx draw" pathLength="100" d="M82 18 L18 82" stroke-width="9" stroke-linecap="round" fill="none" style="animation-delay:.12s"/></svg>';
+const XSVG_STATIC = XSVG.replaceAll(' draw', '');
+const OSVG = '<svg viewBox="0 0 100 100"><circle class="mo draw" pathLength="100" cx="50" cy="50" r="32" stroke-width="9" fill="none"/></svg>';
+const OSVG_STATIC = OSVG.replace(' draw', '');
+
+function mini(b, hot = -1, cls = '') {
+  return `<div class="mini ${cls}" role="img" aria-label="${str(b)}">` +
+    b.map((c, i) => `<i class="${c}${i === hot ? ' hot' : ''}">${c || ''}</i>`).join('') + '</div>';
+}
+
+function renderBoard() {
+  const r = result(S.board), line = winLine(S.board) || [];
+  $('board').innerHTML = S.board.map((c, i) => {
+    const svg = c === 'X' ? (i === S.lastMove ? XSVG : XSVG_STATIC) : c === 'O' ? (i === S.lastMove ? OSVG : OSVG_STATIC) : '';
+    const cls = line.includes(i) ? (r === 'X' ? ' win' : ' oWin') : '';
+    const can = S.mode === 'human' && !S.busy && (!c || r);
+    return `<button class="cell${cls}" data-i="${i}" aria-label="Square ${i + 1}${c ? ', ' + c : ''}" ${can ? '' : 'disabled'}>${svg}</button>`;
+  }).join('');
+}
+
+function renderChart() {
+  const n = S.curve.length;
+  if (!n) { $('chart').innerHTML = '<p class="empty">Play or train some games to see the learning curve.</p>'; return; }
+  const W = 560, H = 170, L = 40, R = 14, T = 12, B = 26;
+  const maxY = Math.max(1, S.curve[n - 1], S.memCurve[n - 1]);
+  const x = i => L + (n === 1 ? 0 : (i / (n - 1)) * (W - L - R));
+  const y = v => T + (1 - v / maxY) * (H - T - B);
+  const pts = S.curve.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  const mpts = S.memCurve.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  $('chart').innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Cumulative losses and remembered positions over ${n} games">
+    <line class="axis" x1="${L}" y1="${y(0)}" x2="${W - R}" y2="${y(0)}"/><line class="axis" x1="${L}" y1="${T}" x2="${L}" y2="${y(0)}"/>
+    <polygon class="area" points="${x(0)},${y(0)} ${pts} ${x(n - 1)},${y(0)}"/>
+    <polyline class="curve" points="${pts}"/><polyline class="mem" points="${mpts}"/>
+    <text x="${L - 6}" y="${y(0) + 4}" text-anchor="end">0</text><text x="${L - 6}" y="${T + 9}" text-anchor="end">${maxY}</text>
+    <text x="${L}" y="${H - 6}">game 1</text><text x="${W - R}" y="${H - 6}" text-anchor="end">game ${n.toLocaleString()}</text>
+    <text x="${W - R}" y="${T + 9}" text-anchor="end" style="fill:var(--red)">total losses</text>
+    <text x="${W - R}" y="${T + 23}" text-anchor="end" style="fill:var(--o)">positions remembered</text>
+  </svg>`;
+}
+
+function renderLesson() {
+  const L = S.lesson;
+  if (!L) {
+    $('lessonText').textContent = 'No losses yet. When X wins, the walk back from the loss shows up here.';
+    $('strip').innerHTML = ''; return;
+  }
+  const n = L.marked.length;
+  const oNo = L.blame / 2;
+  $('lessonText').innerHTML = L.blame === 0
+    ? `Game ${L.game}: every O reply was a known loss, so the whole game is lost for O from the start.`
+    : `Game ${L.game}: the mistake was <strong>O's move ${oNo}</strong> (square ${L.blameCell + 1}). ` +
+      (n === 1 ? 'O had other untried moves there, so the blame stopped one step back from the loss.'
+               : `The blame walked back ${n} decisions, because at each later point every O move was already known to lose.`);
+  $('strip').innerHTML = L.h.slice(1).map((b, k) => {
+    const j = k + 1, marked = L.marked.includes(j);
+    const who = j % 2 ? 'X' : 'O', num = Math.ceil(j / 2);
+    const last = j === L.h.length - 1;
+    const lbl = last ? 'X wins' : marked ? `${who}${num} · never` : `${who}${num}`;
+    return `<div class="step${marked ? ' marked' : ''}">${mini(b, j === L.blame ? L.blameCell : -1)}<span class="lbl">${lbl}</span></div>`;
+  }).join('');
+}
+
+function renderMem() {
+  const all = [...S.lost.values()].reverse();
+  if (!all.length) { $('mem').innerHTML = '<p class="empty">Empty. The learner hasn\'t lost a game yet.</p>'; return; }
+  const cap = 120;
+  $('mem').innerHTML = all.slice(0, cap).map(v => mini(v.board, -1, v.kind === 'prop' ? 'prop' : '')).join('') +
+    (all.length > cap ? `<p class="empty">and ${all.length - cap} more</p>` : '');
+}
+
+function render() {
+  renderBoard();
+  const st = S.stats;
+  $('sGames').textContent = st.games.toLocaleString(); $('sLoss').textContent = st.losses.toLocaleString();
+  $('sDraw').textContent = st.draws.toLocaleString(); $('sWin').textContent = st.wins.toLocaleString();
+  $('sMem').textContent = S.lost.size.toLocaleString();
+  const rl = S.recent.reduce((a, b) => a + b, 0);
+  $('recent').textContent = st.games ? `Losses in the last ${S.recent.length} games: ${rl}. Red line is total losses; it goes flat once the learner stops losing. Blue dashes are remembered positions.` : '';
+  $('status').innerHTML = S.msg || (S.mode === 'human' ? 'You are X. Click a square to start.' : 'Press <b>Play a game</b> to watch, or train in bulk.');
+  for (const id of ['watch', 't100', 't1000']) $(id).disabled = S.busy || S.mode === 'human';
+  $('reset').disabled = S.busy; $('opp').disabled = S.busy; $('sym').disabled = S.busy;
+  renderChart(); renderLesson(); renderMem();
+}
+
+// ---- wiring ----
+$('board').addEventListener('click', e => { const c = e.target.closest('.cell'); if (c) humanClick(+c.dataset.i); });
+$('watch').onclick = watchGame;
+$('t100').onclick = () => train(100);
+$('t1000').onclick = () => train(1000);
+$('opp').onchange = e => { S.mode = e.target.value; S.hist = null; S.board = Array(9).fill(''); S.msg = ''; render(); };
+$('sym').onchange = e => { S.sym = e.target.checked; rekey(); render(); };
+$('reset').onclick = () => {
+  S.lost = new Map(); S.stats = { games: 0, losses: 0, draws: 0, wins: 0 }; S.curve = []; S.memCurve = []; S.recent = [];
+  S.lesson = null; S.hist = null; S.board = Array(9).fill(''); S.msg = 'Memory erased. The learner is back to random moves.'; render();
+};
+
+function start(data) {
+  if (data && data.lost) {
+    Object.assign(S, { sym: data.sym, mode: data.mode, stats: data.stats, curve: data.curve, memCurve: data.memCurve,
+      recent: data.recent, lesson: data.lesson });
+    S.lost = new Map(data.lost);
+    $('opp').value = S.mode; $('sym').checked = S.sym;
+  }
+  render();
+}
+start();
+})();
+</script>
+</body>
+</html>
