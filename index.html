@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="PAX 2.0: a tribute to Len Dorfman's PAX Chess (2001), with his opening book, his art, and the learning he planned.">
+<style>body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>PAX 2.0</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=JetBrains+Mono:wght@400;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+<style>
+/* Layout: PAX's teal board on the left, its "mind" on the right: last turn, the game's winning-chance curve with the point of no return, and what it has learned. */
+:root {
+  --bg: #eef2f3; --surface: #ffffff; --line: #c9d6da; --ink: #18252b; --muted: #55686f;
+  --teal: #1c9eac; --teal-ink: #0f6f7a; --accent: #1c7d8a; --win: #23784a; --loss: #c42f28; --learn: #7a3fb8; --gold: #b8860b;
+  --light-sq: #cdebed; --dark-sq: #1c9eac; --sel: #f2c84b; --target: rgba(24, 37, 43, .35); --lastmv: rgba(242, 200, 75, .5);
+  --hl: #fff1b8; --mono-bg: #f5f8f9;
+  /* Dorfman's 2001 bitmaps carry fixed colors, so these stay the same in both themes */
+  --art-light: #cdebed; --art-dark: #1c9eac; --art-ground: #e3eff4; --sq: 40px;
+  --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0e1517; --surface: #152024; --line: #26383e; --ink: #e2ecee; --muted: #93a8ae;
+  --teal: #3cc0cd; --teal-ink: #7fdbe4; --accent: #5fc9d4; --win: #5cc98b; --loss: #ff6f62; --learn: #c39bff; --gold: #e0b44a;
+  --light-sq: #a9cfd2; --dark-sq: #1a7f8a; --sel: #d9b33a; --target: rgba(0, 0, 0, .4); --lastmv: rgba(217, 179, 58, .5);
+  --hl: #4a3f12; --mono-bg: #10191c; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0e1517; --surface: #152024; --line: #26383e; --ink: #e2ecee; --muted: #93a8ae;
+  --teal: #3cc0cd; --teal-ink: #7fdbe4; --accent: #5fc9d4; --win: #5cc98b; --loss: #ff6f62; --learn: #c39bff; --gold: #e0b44a;
+  --light-sq: #a9cfd2; --dark-sq: #1a7f8a; --sel: #d9b33a; --target: rgba(0, 0, 0, .4); --lastmv: rgba(217, 179, 58, .5);
+  --hl: #4a3f12; --mono-bg: #10191c; color-scheme: dark }
+
+body { background: var(--bg); color: var(--ink); font: 16px/1.55 var(--f-body); padding-inline: 16px; padding-block: 26px 48px; }
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 24px; }
+h1, h2 { font-family: var(--f-display); margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(2rem, 5vw, 3rem); font-weight: 800; letter-spacing: -.02em; line-height: 1; }
+h1 small { font-size: .38em; font-weight: 600; letter-spacing: 0; color: var(--muted); display: block; margin-top: 8px; }
+h2 { font-size: 1.1rem; font-weight: 600; }
+h3 { font: 600 .72rem/1 var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0; }
+.eyebrow { font: 600 .72rem/1 var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--teal-ink); margin-bottom: 10px; }
+.lede { max-width: 74ch; color: var(--muted); margin: 12px 0 0; }
+.cols { display: grid; grid-template-columns: minmax(0, 690px) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 1100px) { .cols { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: grid; gap: 14px; min-width: 0; }
+.left, .side { display: grid; gap: 20px; min-width: 0; }
+
+/* Board: Dorfman's own 40px piece bitmaps, drawn only at whole multiples (40 or 80px squares) so the pixels stay square */
+.boardBox { width: 100%; display: grid; justify-items: center; }
+.board { display: grid; grid-template-columns: repeat(8, var(--sq)); grid-template-rows: repeat(8, var(--sq)); width: max-content; outline: 4px solid #8f8f8f; box-shadow: 0 0 0 6px #5c5c5c; margin: 6px; }
+.sq { appearance: none; border: 0; padding: 0; margin: 0; position: relative; cursor: pointer; width: var(--sq); height: var(--sq);
+  background: url("art/pieces.png") calc(var(--i) * -1 * var(--sq)) calc(var(--r) * -1 * var(--sq)) / calc(13 * var(--sq)) calc(2 * var(--sq)) no-repeat;
+  image-rendering: pixelated; image-rendering: crisp-edges; }
+.sq.l { --r: 0; } .sq.d { --r: 1; }
+.sq.last::before, .sq.sel::before { content: ""; position: absolute; inset: 0; background: var(--lastmv); z-index: 1; }
+.sq.sel::before { background: var(--sel); opacity: .55; }
+.sq.tgt::after { content: ""; position: absolute; left: 35%; top: 35%; width: 30%; height: 30%; border-radius: 50%; background: var(--target); z-index: 2; }
+.sq.tgt.cap::after { left: 7%; top: 7%; width: 86%; height: 86%; box-sizing: border-box; background: transparent; border: 4px solid var(--target); }
+.sq:focus-visible { outline: 3px solid var(--sel); outline-offset: -3px; z-index: 3; }
+.coord { position: absolute; font: 600 9px/1 var(--f-mono); opacity: .8; z-index: 2; pointer-events: none; }
+.coord.f { right: 3px; bottom: 2px; } .coord.r { left: 3px; top: 3px; }
+.sq.l .coord { color: var(--art-dark); } .sq.d .coord { color: var(--art-light); }
+@media (max-width: 480px) { .boardPanel { padding: 0; border: 0; background: transparent; } .board { margin: 3px; outline-width: 3px; box-shadow: none; } }
+.px { image-rendering: pixelated; image-rendering: crisp-edges; max-width: none; display: block; }
+.splash { width: 609px; height: 330px; border: 1px solid var(--line); }
+.yy { width: 99px; height: 93px; display: none; }
+.hero { display: flex; flex-wrap: wrap; gap: 20px 28px; align-items: center; }
+.hero .txt { flex: 1 1 320px; min-width: 0; }
+@media (max-width: 700px) { .splash { display: none; } .yy { display: block; } }
+.origin { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 14px 22px; align-items: start; }
+@media (max-width: 520px) { .origin { grid-template-columns: minmax(0, 1fr); } }
+.origin figure { margin: 0; display: grid; gap: 6px; justify-items: start; }
+.origin figcaption { font-size: .76rem; color: var(--muted); max-width: 22ch; }
+.origin .emblem { width: 108px; height: 112px; }
+.origin .q { margin: 0 0 10px; font-size: .95rem; }
+.origin .q cite { display: block; font: 600 .7rem/1.4 var(--f-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-style: normal; margin-top: 3px; }
+.origin .about { font: .82rem/1.6 var(--f-mono); color: var(--muted); margin: 0; }
+.clock { background: #000; color: #2bff6a; font: 600 .9rem/1 var(--f-mono); padding: 10px 12px; border: 2px solid #666; letter-spacing: .04em; min-height: 1.2em; }
+
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; }
+@media (max-width: 480px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+label.field { display: grid; gap: 4px; font-size: .8rem; color: var(--muted); min-width: 0; }
+select, button.btn { font: inherit; font-size: .9rem; border-radius: 7px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); padding: 7px 10px; min-width: 0; }
+button.btn { cursor: pointer; font-weight: 700; }
+button.btn.primary { background: var(--teal-ink); border-color: var(--teal-ink); color: var(--surface); }
+button.btn.danger { color: var(--loss); }
+button.btn:disabled { opacity: .45; cursor: default; }
+select:focus-visible, button.btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.btns { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: var(--teal); transition: width .15s; }
+
+.pill { display: inline-block; font: 600 .7rem/1 var(--f-mono); letter-spacing: .08em; text-transform: uppercase; padding: 5px 8px; border-radius: 99px; border: 1.5px solid currentColor; white-space: nowrap; }
+.pill.book { color: var(--win); } .pill.think { color: var(--accent); } .pill.idle { color: var(--muted); } .pill.learn { color: var(--learn); }
+.head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.note { font-size: .88rem; color: var(--muted); margin: 0; }
+.note b { color: var(--ink); }
+.big { font: 600 1.6rem/1 var(--f-mono); font-variant-numeric: tabular-nums; }
+.meter { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; align-items: center; }
+.wpbar { height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; }
+.wpbar i { display: block; height: 100%; background: var(--teal); }
+
+.curve svg { width: 100%; height: auto; display: block; }
+.curve .axis { stroke: var(--line); } .curve .mid { stroke: var(--line); stroke-dasharray: 3 4; }
+.curve text { fill: var(--muted); font: 11px var(--f-mono); }
+.curve .line { fill: none; stroke: var(--teal); stroke-width: 2.2; } .curve .area { fill: var(--teal); opacity: .12; }
+.curve .pnr { stroke: var(--loss); stroke-width: 2; } .curve .pnrdot { fill: var(--loss); } .curve .pnrtext { fill: var(--loss); font-weight: 600; }
+.lessonText { margin: 0; font-size: .95rem; }
+.lessonText strong { color: var(--loss); }
+
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.stat { padding: 9px 10px; border-right: 1px solid var(--line); min-width: 0; } .stat:last-child { border-right: 0; }
+.stat .v { font: 600 1.2rem/1.1 var(--f-mono); font-variant-numeric: tabular-nums; }
+.stat .k { font-size: .66rem; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.stat.l .v { color: var(--learn); }
+.memList { display: grid; gap: 6px; max-height: 200px; overflow-y: auto; font-size: .84rem; }
+.memRow { display: flex; justify-content: space-between; gap: 10px; padding: 6px 8px; background: var(--mono-bg); border: 1px solid var(--line); border-radius: 6px; }
+.memRow b { color: var(--learn); } .memRow span { color: var(--muted); }
+
+.moves { display: flex; flex-wrap: wrap; gap: 4px 2px; font: .84rem/1.6 var(--f-mono); max-height: 150px; overflow-y: auto; }
+.moves .n { color: var(--muted); margin-left: 6px; } .moves .m { padding: 0 3px; border-radius: 3px; }
+.moves .m.bk { color: var(--win); font-weight: 600; } .moves .m.vet { color: var(--learn); font-weight: 700; } .moves .m.pnr { background: var(--loss); color: var(--surface); }
+.legendRow { display: flex; gap: 14px; flex-wrap: wrap; font-size: .78rem; color: var(--muted); }
+.legendRow .bk { color: var(--win); font-weight: 700; } .legendRow .vet { color: var(--learn); font-weight: 700; } .legendRow .pnr { color: var(--loss); font-weight: 700; }
+.foot { font-size: .82rem; color: var(--muted); max-width: 90ch; margin: 0; }
+.remember { gap: 12px; }
+.student { margin: 0; font: 600 clamp(1.05rem, 2.2vw, 1.3rem)/1.45 var(--f-display); max-width: 60ch; text-wrap: pretty; }
+.student cite { display: block; margin-top: 8px; font: 600 .7rem/1.4 var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-style: normal; }
+.dedication { border-left: 3px solid var(--teal); padding: 4px 0 4px 14px; color: var(--muted); font-size: .92rem; max-width: 80ch; margin: 0; }
+</style>
+
+<div class="wrap">
+  <header class="hero">
+    <img class="px splash" src="art/splash.png" width="609" height="330" alt="The original PAX Chess title screen: hand-lettered 'PAX Chess', a pixel yin-yang, and Len Dorfman's note that PAX is a recreational, fun, and garden variety research project into cognition and machine learning.">
+    <div class="txt">
+    <img class="px yy" src="art/yinyang.png" width="99" height="93" alt="The pixel yin-yang from the original PAX title screen">
+    <div class="eyebrow">In memory of Len Dorfman · PAX Chess, 2001 → 2026</div>
+    <h1>PAX 2.0<small>Forever Freeware, with machine learning and the learning he planned</small></h1>
+    <p class="lede">PAX opens from Dr. Dorfman's real 13&nbsp;MB opening book, keeps his three temperaments, and resigns the way his did. It now judges positions with an evaluation learned by gradient descent from about 900,000 Stockfish-scored positions in games that began in his book. When it loses, it finds the <b>point of no return</b>, the move where its chances collapsed, and learns from it so that it also avoids similar positions, not just that exact one.</p>
+    </div>
+  </header>
+
+  <div class="cols">
+    <div class="left">
+      <section class="panel boardPanel" aria-label="Chessboard">
+        <div class="boardBox" id="boardBox"><div class="board" id="board"></div></div>
+        <div class="clock" id="clock" aria-live="polite">LOADING PAX…</div>
+        <div class="bar" id="bar" aria-hidden="true"><i id="barFill"></i></div>
+      </section>
+      <section class="panel" aria-label="Settings">
+        <div class="grid2">
+          <label class="field" for="paxColor">PAX plays
+            <select id="paxColor"><option value="b">Black (as in 2001)</option><option value="w">White (new in 2.0)</option></select></label>
+          <label class="field" for="difficulty">Difficulty
+            <select id="difficulty"><option value="2">BEGINNER · Very Easy</option><option value="4">Easy</option><option value="t" selected>Thoughtful</option></select></label>
+          <label class="field" for="temperament">Temperament
+            <select id="temperament"><option value="aggressive">Aggressive (hard)</option><option value="satvic" selected>Satvic (balanced)</option><option value="passive">Passive (soft)</option></select></label>
+          <label class="field" for="learning">Learning
+            <select id="learning"><option value="on" selected>Enabled</option><option value="off">Off</option></select></label>
+        </div>
+        <div class="btns">
+          <button class="btn primary" id="newGame">New game</button>
+          <button class="btn" id="undo">Take back</button>
+          <button class="btn" id="hint">Hint</button>
+        </div>
+        <p class="note" id="hintText"></p>
+      </section>
+      <section class="panel" aria-label="Moves">
+        <h2>Move list</h2>
+        <div class="legendRow"><span><span class="bk">green</span> from Dorfman's book</span><span><span class="vet">purple</span> a lesson changed PAX's move</span><span><span class="pnr">red</span> point of no return</span></div>
+        <div class="moves" id="moves"><span class="note">No moves yet.</span></div>
+      </section>
+    </div>
+
+    <div class="side">
+      <section class="panel" aria-label="PAX's last turn">
+        <div class="head"><h2>PAX's last turn</h2><span class="pill idle" id="pill">waiting</span></div>
+        <div class="meter"><span class="note">PAX's winning chances</span><div class="wpbar"><i id="wpFill" style="width:50%"></i></div></div>
+        <div id="trace"><p class="note">Loading PAX's judgement and the book…</p></div>
+      </section>
+
+      <section class="panel" aria-label="The game's curve">
+        <div class="head"><h2>This game, move by move</h2></div>
+        <div class="curve" id="curve"></div>
+        <p class="lessonText" id="lessonText"></p>
+      </section>
+
+      <section class="panel" aria-label="What PAX has learned">
+        <div class="head"><h2>What PAX has learned</h2><span class="pill learn" id="lessonPill">0 lessons</span></div>
+        <div class="stats">
+          <div class="stat"><div class="v" id="sW">0</div><div class="k">PAX won</div></div>
+          <div class="stat"><div class="v" id="sD">0</div><div class="k">Draws</div></div>
+          <div class="stat"><div class="v" id="sL">0</div><div class="k">PAX lost</div></div>
+          <div class="stat l"><div class="v" id="sLes">0</div><div class="k">Lessons</div></div>
+        </div>
+        <div class="memList" id="memList"></div>
+        <div class="btns"><button class="btn danger" id="erase">Forget all lessons</button><span class="note" id="eraseNote"></span></div>
+        <p class="note">Lessons are kept in this browser. Each time the page opens, PAX replays them into its judgement.</p>
+      </section>
+    </div>
+  </div>
+
+  <section class="panel" aria-label="From the 2001 program">
+    <h3>From the 2001 program</h3>
+    <div class="origin">
+      <figure><img class="px emblem" src="art/emblem.png" width="108" height="112" alt="A lamp inside a five-petalled lotus whose petals read Truth, Right Conduct, Peace, Love and Non-Violence"><figcaption>Bitmap 161 in PAX.EXE: a lamp in a lotus of five values.</figcaption></figure>
+      <div>
+        <p class="q">"It's important at this primordial stage of PAX's development for me to receive many move lists."<cite>with metta, Len</cite></p>
+        <p class="q">"Satvic (balanced)"<cite>his name for PAX's middle temperament, between Aggressive and Passive</cite></p>
+        <p class="q">"William C.C. Chen Yang Style"<cite>a tai chi entry left in PAX's menu resources</cite></p>
+        <p class="about">PAX CHESS · Forever Freeware · In-progress recreation, research project · by Len Dorfman · [build date 11.17.01 am]</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel remember" aria-label="Remembering Len Dorfman">
+    <h3>Remembering Len</h3>
+    <blockquote class="student">He first got me interested in the internet in 1995 and 1996. He did tai chi on the soccer field in the mornings and didn't care what people thought of him. In a chaotic middle school, his classroom was a bastion of peace.<cite>A former student</cite></blockquote>
+    <p class="dedication">Len Dorfman taught programming in the Shoreham-Wading River schools from 1970 to 1999 and wrote <i>Developing Games That Learn</i> (1996). He built PAX as "a recreational, fun, and garden variety research project into cognition and machine learning." Its learning switch said <i>"The feature will be coded after PAX starts learning."</i> This is that feature.</p>
+  </section>
+  <p class="foot">How it works: PAX's judgement is a learned value for every piece on every square, separately for the middlegame and the endgame. The values were fitted by gradient descent (Texel-style tuning) to Stockfish's scores on about 900,000 positions from games that start in Dorfman's MARK10 book, and are searched with alpha-beta. A small neural network was tried first. It wasn't more accurate and searched ten times slower, so it lost to these tables. The point of no return is the last moment PAX's winning chances were above 35%; the PAX move right after it is the lesson. Lessons adjust those learned values directly, so similar positions are judged differently too, and are also remembered as never-enter positions, his original 1996 rule. PAX 2.0 is a tribute, not his code; his original 2001 program rated about 1560 against Stockfish in testing.</p>
+</div>
+
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+// column of each piece in art/pieces.png (row 0 = light square, row 1 = dark), cut from PAX.EXE bitmaps 130-157
+const TILE = { P: 1, N: 2, B: 3, R: 4, Q: 5, K: 6, p: 7, n: 8, b: 9, r: 10, q: 11, k: 12 };
+function fitBoard() {
+  const m = innerWidth <= 480 ? 6 : 12, avail = $('boardBox').clientWidth - m, k = Math.min(2, Math.floor(avail / 320));
+  document.documentElement.style.setProperty('--sq', (k >= 1 ? 40 * k : Math.floor(avail / 8)) + 'px');
+}
+const FILES = 'abcdefgh';
+const sqName = i => FILES[i % 8] + (Math.floor(i / 8) + 1);
+const uci = m => m.from + m.to + (m.promotion || '');
+const placeKey = fen => fen.split(' ').slice(0, 2).join(' ');      // board + side to move
+const wp = cp => 1 / (1 + Math.exp(-cp / 400));
+const LKEY = 'pax2-lessons-v1', SKEY = 'pax2-stats-v1';
+
+const S = {
+  game: new Chess(), pax: 'b', book: null, loaded: false, sel: null, last: null, tags: [], trace: null,
+  busy: false, gen: 0, ended: false, lessons: [], never: new Set(), stats: { w: 0, d: 0, l: 0 },
+  curve: null, pnrPly: null, eraseArmed: false
+};
+const opt = () => ({ diff: $('difficulty').value, temp: $('temperament').value, learn: $('learning').value === 'on' });
+
+// ---- storage ----
+function loadStore() {
+  try { S.lessons = JSON.parse(localStorage.getItem(LKEY) || '[]'); } catch (e) { S.lessons = []; }
+  try { Object.assign(S.stats, JSON.parse(localStorage.getItem(SKEY) || '{}')); } catch (e) {}
+  S.never = new Set(S.lessons.map(l => l.key));
+}
+function saveStore() {
+  try { localStorage.setItem(LKEY, JSON.stringify(S.lessons)); localStorage.setItem(SKEY, JSON.stringify(S.stats)); } catch (e) {}
+}
+
+// ---- engine worker ----
+let worker, reqId = 0; const pending = new Map();
+const engine = msg => new Promise(res => { const id = ++reqId; pending.set(id, res); worker.postMessage({ id, ...msg }); });
+
+// ---- Dorfman's book (published with control bytes escaped as ~XX) ----
+async function loadBook(onProgress) {
+  const res = await fetch('mark10w.txt'); if (!res.ok) throw new Error('book: ' + res.status);
+  const total = +res.headers.get('content-length') || 0; let buf;
+  if (res.body && total) {
+    const rd = res.body.getReader(); const parts = []; let got = 0;
+    for (;;) { const { done, value } = await rd.read(); if (done) break; parts.push(value); got += value.length; onProgress(got / total); }
+    buf = new Uint8Array(got); let o = 0; for (const p of parts) { buf.set(p, o); o += p.length; }
+  } else buf = new Uint8Array(await res.arrayBuffer());
+  const raw = new Uint8Array(buf.length); let n = 0;
+  for (let i = 0; i < buf.length; i++) { if (buf[i] === 0x7e) { raw[n++] = parseInt(String.fromCharCode(buf[i + 1], buf[i + 2]), 16); i += 2; } else raw[n++] = buf[i]; }
+  let text = ''; for (let i = 0; i < n; i += 0x8000) text += String.fromCharCode.apply(null, raw.subarray(i, Math.min(n, i + 0x8000)));
+  return text;
+}
+function bookMove(g) {
+  const key = g.fen().split(' ')[0] + '/'; const at = S.book.indexOf(key);
+  if (at < 0) return null;
+  let i = at; while (S.book.charCodeAt(i) !== 45) i++;
+  const from = sqName(S.book.charCodeAt(i + 1) - 1), to = sqName(S.book.charCodeAt(i + 2) - 1);
+  const pc = g.get(from); if (!pc || pc.color !== g.turn()) return null;    // entry belongs to the other side to move
+  return g.moves({ verbose: true }).find(m => m.from === from && m.to === to) || null;
+}
+
+// ---- choosing PAX's move ----
+const cands = g => g.moves({ verbose: true }).filter(m => !m.promotion || m.promotion === 'q');
+async function paxChoose() {
+  const g = S.game, o = opt(); const legal = cands(g);
+  const info = legal.map(m => { g.move(m); const k = placeKey(g.fen()); g.undo(); return { m, banned: o.learn && S.never.has(k) }; });
+  const allowed = info.filter(x => !x.banned); const banned = info.length - allowed.length;
+  const tr = { banned };
+  const bm = bookMove(g);
+  if (bm && allowed.some(x => x.m.san === bm.san)) { tr.source = 'book'; tr.played = bm.san; return { m: bm, tag: banned ? 'vet' : 'bk', tr }; }
+  if (bm) tr.bookVetoed = bm.san;
+  const pool = (allowed.length ? allowed : info).map(x => x.m);
+  const depth = o.diff === 't' ? 0 : +o.diff, time = o.diff === 't' ? 1500 : 4000;
+  const r = await engine({ type: 'search', fen: g.fen(), moves: pool.map(uci), timeMs: time, variety: 0, maxDepth: depth || undefined, style: o.temp });
+  const m = pool.find(x => uci(x) === r.uci) || pool[0];
+  Object.assign(tr, { source: 'think', played: m.san, eval: r.score, depth: r.depth, nodes: r.nodes });
+  return { m, tag: banned ? 'vet' : 'eng', tr };
+}
+function apply(m, tag) {
+  const mv = S.game.move({ from: m.from, to: m.to, promotion: 'q' }); if (!mv) return null;
+  S.tags.push(tag); S.last = { from: m.from, to: m.to }; S.sel = null; return mv;
+}
+
+// ---- after the game: the curve and the point of no return ----
+async function review() {
+  const hist = S.game.history({ verbose: true }); const r = new Chess(); const fens = [r.fen()];
+  for (const m of hist) { r.move(m); fens.push(r.fen()); }
+  setClock('PAX IS REVIEWING THE GAME…');
+  const res = await engine({ type: 'evalGame', fens, depth: 4 });
+  // winning chances for PAX after each ply; mate/stalemate positions get their true value
+  const curve = res.scores.map((cp, i) => {
+    const g = new Chess(fens[i]);
+    if (g.in_checkmate()) return g.turn() === S.pax ? 0 : 1;
+    if (g.in_draw() || g.in_stalemate()) return 0.5;
+    const stm = fens[i].split(' ')[1]; return wp(stm === S.pax ? cp : -cp);
+  });
+  S.curve = curve; S.pnrPly = null;
+  const lost = S.game.in_checkmate() && S.game.turn() === S.pax;
+  if (!lost) return null;
+  // last position where PAX still had better than a 35% chance; the PAX move after it is the point of no return
+  let last = -1; for (let i = 0; i < curve.length; i++) if (curve[i] >= 0.35) last = i;
+  const paxMovesAfter = []; for (let i = last + 1; i < fens.length; i++) if (fens[i - 1].split(' ')[1] === S.pax) paxMovesAfter.push(i);
+  let ply = paxMovesAfter.length ? paxMovesAfter[0] : fens.length - 2;
+  // Dorfman's rule: a forced move can't be the mistake, so blame passes back to PAX's previous move
+  while (ply >= 3 && new Chess(fens[ply - 1]).moves().length === 1) ply -= 2;
+  S.pnrPly = ply;
+  const mv = hist[ply - 1]; const num = Math.ceil(ply / 2);
+  const label = ply % 2 ? `${num}. ${mv.san}` : `${num}… ${mv.san}`;
+  const lesson = { key: placeKey(fens[ply]), fen: fens[ply], target: 0.92, weight: 3, label, before: curve[ply - 1], after: curve[ply], game: S.stats.w + S.stats.d + S.stats.l };
+  // the next two positions PAX created were also lost; teach those too, more gently
+  const follow = paxMovesAfter.slice(1, 3).map(i => ({ key: placeKey(fens[i]), fen: fens[i], target: 0.92, weight: 1, label: null }));
+  return { lesson, follow };
+}
+async function endGame() {
+  if (S.ended) return; S.ended = true;
+  const g = S.game; const lost = g.in_checkmate() && g.turn() === S.pax, won = g.in_checkmate() && g.turn() !== S.pax;
+  if (lost) S.stats.l++; else if (won) S.stats.w++; else S.stats.d++;
+  S.busy = true; render();
+  const out = await review();
+  if (out && opt().learn) {
+    setClock('PAX IS LEARNING FROM ITS POINT OF NO RETURN…');
+    const fresh = [out.lesson, ...out.follow].filter(l => !S.lessons.some(x => x.key === l.key));
+    for (const l of fresh) S.never.add(l.key);
+    S.lessons.push(...fresh);
+    if (fresh.length) await engine({ type: 'learn', lessons: fresh, epochs: 12, lr: 0.02 });
+    S.lastLesson = out.lesson;
+  } else S.lastLesson = out ? out.lesson : null;
+  saveStore(); S.busy = false; render();
+}
+
+// ---- turns ----
+async function paxTurn() {
+  const my = S.gen; S.busy = true; render();
+  const { m, tag, tr } = await paxChoose(); if (my !== S.gen) return;
+  apply(m, tag); S.trace = tr; S.busy = false;
+  if (S.game.game_over()) await endGame();
+  render();
+}
+async function youMove(from, to) {
+  if (!apply({ from, to }, 'you')) return;
+  $('hintText').textContent = '';
+  if (S.game.game_over()) { await endGame(); render(); return; }
+  render(); await paxTurn();
+}
+function newGame() {
+  S.gen++; S.game = new Chess(); S.tags = []; S.sel = null; S.last = null; S.trace = null; S.ended = false; S.busy = false; S.curve = null; S.pnrPly = null; S.lastLesson = null;
+  $('hintText').textContent = ''; render(); if (S.pax === 'w') paxTurn();
+}
+
+// ---- rendering ----
+function setClock(t) { $('clock').textContent = t; }
+function renderBoard() {
+  const flip = S.pax === 'w'; const moves = S.sel ? S.game.moves({ square: S.sel, verbose: true }) : [];
+  let h = '';
+  for (let row = 0; row < 8; row++) for (let col = 0; col < 8; col++) {
+    const rank = flip ? row + 1 : 8 - row, file = flip ? 7 - col : col, sq = FILES[file] + rank, p = S.game.get(sq);
+    const tgt = moves.find(m => m.to === sq);
+    const cls = ['sq', (file + rank) % 2 ? 'd' : 'l', S.sel === sq ? 'sel' : '', tgt ? 'tgt' : '', tgt && tgt.captured ? 'cap' : '', S.last && (S.last.from === sq || S.last.to === sq) ? 'last' : ''].join(' ');
+    const cf = row === 7 ? `<span class="coord f">${FILES[file]}</span>` : '', cr = col === 0 ? `<span class="coord r">${rank}</span>` : '';
+    const name = p ? `${sq}, ${p.color === 'w' ? 'white' : 'black'} ${{ k: 'king', q: 'queen', r: 'rook', b: 'bishop', n: 'knight', p: 'pawn' }[p.type]}` : sq;
+    const tile = p ? TILE[p.color === 'w' ? p.type.toUpperCase() : p.type] : 0;
+    h += `<button class="${cls}" style="--i:${tile}" data-sq="${sq}" aria-label="${name}">${cf}${cr}</button>`;
+  }
+  $('board').innerHTML = h;
+}
+function renderTrace() {
+  const tr = S.trace, pill = $('pill');
+  if (!S.loaded) return;
+  if (!tr) { pill.className = 'pill idle'; pill.textContent = 'waiting'; $('trace').innerHTML = `<p class="note">${S.pax === 'b' ? 'You have White. Make your first move.' : 'PAX is opening.'}</p>`; return; }
+  let h = '';
+  if (tr.source === 'book') { pill.className = 'pill book'; pill.textContent = 'Dorfman\'s book'; h += `<p class="note">PAX played <b>${tr.played}</b> straight from Len Dorfman's opening book.</p>`; }
+  else {
+    pill.className = 'pill think'; pill.textContent = 'thinking';
+    const ev = tr.eval > 90000 ? 'a forced mate' : tr.eval < -90000 ? 'being mated' : `${tr.eval >= 0 ? '+' : ''}${(tr.eval / 100).toFixed(2)} pawns`;
+    h += `<p class="note">PAX played <b>${tr.played}</b> after looking ${tr.depth} half-moves ahead through ${tr.nodes.toLocaleString()} positions. Its judgement rates the position ${ev} for PAX.</p>`;
+    $('wpFill').style.width = (Math.abs(tr.eval) > 90000 ? (tr.eval > 0 ? 100 : 0) : wp(tr.eval) * 100).toFixed(0) + '%';
+  }
+  if (tr.banned) h += `<p class="note" style="color:var(--learn)"><b style="color:var(--learn)">A lesson changed this move:</b> PAX ruled out ${tr.banned} move${tr.banned > 1 ? 's' : ''} that lead to a position it lost before${tr.bookVetoed ? `, including the book move ${tr.bookVetoed}` : ''}.</p>`;
+  $('trace').innerHTML = h;
+}
+function renderCurve() {
+  const c = S.curve;
+  if (!c) { $('curve').innerHTML = '<p class="note">When the game ends, PAX replays it and draws its winning chances after every move.</p>'; $('lessonText').innerHTML = ''; return; }
+  const W = 560, H = 170, L = 34, R = 10, T = 12, B = 24, n = c.length - 1 || 1;
+  const x = i => L + i / n * (W - L - R), y = v => T + (1 - v) * (H - T - B);
+  const pts = c.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  let pnr = '';
+  if (S.pnrPly != null) { const px = x(S.pnrPly); pnr = `<line class="pnr" x1="${px}" y1="${T}" x2="${px}" y2="${y(0)}"/><circle class="pnrdot" cx="${px}" cy="${y(c[S.pnrPly])}" r="4"/><text class="pnrtext" x="${Math.min(px + 5, W - 120)}" y="${T + 10}">point of no return</text>`; }
+  $('curve').innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="PAX's winning chances through the game"><line class="axis" x1="${L}" y1="${y(0)}" x2="${W - R}" y2="${y(0)}"/><line class="axis" x1="${L}" y1="${T}" x2="${L}" y2="${y(0)}"/><line class="mid" x1="${L}" y1="${y(.5)}" x2="${W - R}" y2="${y(.5)}"/><polygon class="area" points="${x(0)},${y(0)} ${pts} ${x(n)},${y(0)}"/><polyline class="line" points="${pts}"/>${pnr}<text x="${L - 5}" y="${y(1) + 4}" text-anchor="end">100%</text><text x="${L - 5}" y="${y(.5) + 4}" text-anchor="end">50%</text><text x="${L - 5}" y="${y(0) + 4}" text-anchor="end">0%</text><text x="${L}" y="${H - 6}">start</text><text x="${W - R}" y="${H - 6}" text-anchor="end">move ${Math.ceil(n / 2)}</text></svg>`;
+  const l = S.lastLesson;
+  $('lessonText').innerHTML = l
+    ? `The game slipped away at <strong>${l.label}</strong>: PAX's chances went from ${Math.round(l.before * 100)}% to ${Math.round(l.after * 100)}% and never came back. ${opt().learn ? 'PAX has learned from it and will judge that position, and others like it, as lost.' : 'Learning is off, so PAX did not learn from it.'}`
+    : S.ended ? (S.game.in_checkmate() ? '<b>PAX wins.</b> Nothing to learn from this one.' : 'A draw. PAX learns only from losses.') : '';
+}
+function renderLearned() {
+  $('sW').textContent = S.stats.w; $('sD').textContent = S.stats.d; $('sL').textContent = S.stats.l;
+  const mains = S.lessons.filter(l => l.label);
+  $('sLes').textContent = mains.length; $('lessonPill').textContent = `${mains.length} lesson${mains.length === 1 ? '' : 's'}`;
+  $('memList').innerHTML = mains.length ? mains.slice().reverse().map(l => `<div class="memRow"><b>${l.label}</b><span>${Math.round(l.before * 100)}% → ${Math.round(l.after * 100)}%</span></div>`).join('') : '<p class="note">No lessons yet. PAX learns when it loses.</p>';
+  $('erase').textContent = S.eraseArmed ? 'Click again to forget' : 'Forget all lessons';
+}
+function renderMoves() {
+  const h = S.game.history();
+  $('moves').innerHTML = h.length ? h.map((san, i) => (i % 2 === 0 ? `<span class="n">${i / 2 + 1}.</span>` : '') + `<span class="m ${S.pnrPly === i + 1 ? 'pnr' : (S.tags[i] || '')}">${san}</span>`).join('') : '<span class="note">No moves yet.</span>';
+  $('moves').scrollTop = $('moves').scrollHeight;
+}
+function renderClock() {
+  const g = S.game;
+  if (!S.loaded || S.busy && S.ended) return;
+  if (g.in_checkmate()) setClock(g.turn() === S.pax ? 'PAX FEELS UTTER DISPAIR AND RESIGNS. WELL DONE!' : 'PAX WINS! CHECKMATE.');
+  else if (g.game_over()) setClock('DRAW.');
+  else if (S.busy || g.turn() === S.pax) setClock('PAX IS THINKING…');
+  else setClock((g.in_check() ? 'CHECK! ' : '') + (g.turn() === 'w' ? 'WHITE' : 'BLACK') + ' ON CLOCK…');
+}
+function render() {
+  renderBoard(); renderTrace(); renderCurve(); renderLearned(); renderMoves(); renderClock();
+  const lock = !S.loaded || S.busy;
+  $('newGame').disabled = lock; $('undo').disabled = lock || !S.game.history().length || S.ended; $('hint').disabled = lock || S.ended || S.game.turn() === S.pax;
+  for (const id of ['paxColor', 'erase']) $(id).disabled = lock;
+}
+
+// ---- input ----
+$('board').addEventListener('click', e => {
+  const b = e.target.closest('.sq'); if (!b || !S.loaded || S.busy || S.ended) return;
+  const g = S.game; if (g.turn() === S.pax) return;
+  const sq = b.dataset.sq, p = g.get(sq);
+  if (S.sel && g.moves({ square: S.sel, verbose: true }).some(m => m.to === sq)) { youMove(S.sel, sq); return; }
+  S.sel = p && p.color !== S.pax ? (S.sel === sq ? null : sq) : null; render();
+});
+$('newGame').onclick = newGame;
+$('undo').onclick = () => {
+  const you = S.pax === 'w' ? 'b' : 'w'; if (!S.game.history().length) return;
+  S.game.undo(); S.tags.pop(); while (S.game.history().length && S.game.turn() !== you) { S.game.undo(); S.tags.pop(); }
+  S.sel = null; S.trace = null; const h = S.game.history({ verbose: true }); const l = h[h.length - 1]; S.last = l ? { from: l.from, to: l.to } : null;
+  render(); if (S.game.turn() !== you) paxTurn();
+};
+$('hint').onclick = async () => {
+  S.busy = true; render(); $('hintText').textContent = 'PAX is thinking about your position…';
+  const g = S.game; const legal = cands(g); const bm = bookMove(g);
+  if (bm) { $('hintText').innerHTML = `Dorfman's book plays <b>${bm.san}</b> here.`; }
+  else { const r = await engine({ type: 'search', fen: g.fen(), moves: legal.map(uci), timeMs: 1200, variety: 0 }); const m = legal.find(x => uci(x) === r.uci); $('hintText').innerHTML = `PAX suggests <b>${m ? m.san : r.uci}</b>.`; }
+  S.busy = false; render();
+};
+$('paxColor').onchange = e => { S.pax = e.target.value; newGame(); };
+$('learning').onchange = render;
+$('erase').onclick = () => {
+  if (!S.eraseArmed) { S.eraseArmed = true; render(); setTimeout(() => { S.eraseArmed = false; render(); }, 4000); return; }
+  S.eraseArmed = false; S.lessons = []; S.never = new Set(); saveStore();
+  $('eraseNote').textContent = 'Forgotten. Reload the page to restore PAX\'s untaught judgement.'; render();
+};
+
+async function start() {
+  fitBoard(); try { new ResizeObserver(fitBoard).observe($('boardBox')); } catch (e) { addEventListener('resize', fitBoard); }
+  loadStore(); render();
+  try {
+    worker = new Worker('engine.js');
+    worker.onmessage = e => { const r = pending.get(e.data.id); pending.delete(e.data.id); if (r) r(e.data); };
+    setClock('LOADING PAX\'S JUDGEMENT…');
+    const tables = await (await fetch('tables.json')).json();
+    await engine({ type: 'tables', tables });
+    if (S.lessons.length) { setClock(`REPLAYING ${S.lessons.length} LESSONS…`); await engine({ type: 'learn', lessons: S.lessons, epochs: 12, lr: 0.02 }); }
+    setClock('LOADING DORFMAN\'S OPENING BOOK…');
+    S.book = await loadBook(f => { $('barFill').style.width = (f * 100).toFixed(0) + '%'; });
+    $('bar').hidden = true; S.loaded = true; render();
+    if (S.pax === 'w') paxTurn();
+  } catch (err) {
+    setClock('PAX COULD NOT LOAD. RELOAD TO TRY AGAIN.');
+    $('trace').innerHTML = `<p class="note">${String(err.message || err).replace(/</g, '&lt;')}</p>`;
+  }
+}
+start();
+})();
+</script>
+
+</body>
+</html>
