@@ -128,6 +128,9 @@ select:focus-visible, button.btn:focus-visible { outline: 3px solid var(--accent
 .legendRow .bk { color: var(--win); font-weight: 700; } .legendRow .vet { color: var(--learn); font-weight: 700; } .legendRow .pnr { color: var(--loss); font-weight: 700; }
 .foot { font-size: .82rem; color: var(--muted); max-width: 90ch; margin: 0; }
 .remember { gap: 12px; }
+.his { display: grid; gap: 6px; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+.his .q { margin: 0; font-size: 1.02rem; }
+.his .q cite { display: block; font: 600 .7rem/1.4 var(--f-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-style: normal; margin-top: 2px; }
 .student { margin: 0; font: 600 clamp(1.05rem, 2.2vw, 1.3rem)/1.45 var(--f-display); max-width: 60ch; text-wrap: pretty; }
 .student cite { display: block; margin-top: 8px; font: 600 .7rem/1.4 var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-style: normal; }
 .dedication { border-left: 3px solid var(--teal); padding: 4px 0 4px 14px; color: var(--muted); font-size: .92rem; max-width: 80ch; margin: 0; }
@@ -219,6 +222,11 @@ select:focus-visible, button.btn:focus-visible { outline: 3px solid var(--accent
 
   <section class="panel remember" aria-label="Remembering Len Dorfman">
     <h3>Remembering Len</h3>
+    <div class="his">
+      <p class="q">"Kindness is my religion."<cite>the Dalai Lama, his favorite quote</cite></p>
+      <p class="q">"You don't have to be a Buddha to act like one."<cite>the quote he used to guide his behavior</cite></p>
+      <p class="note">On his homepage he described daily Yang Style Taijiquan 24-movement Short Form practice and morning Vipassana meditation, and said he started PAX in 1996 "for laughs."</p>
+    </div>
     <blockquote class="student">He first got me interested in the internet in 1995 and 1996. He did tai chi on the soccer field in the mornings and didn't care what people thought of him. In a chaotic middle school, his classroom was a bastion of peace.<cite>A former student</cite></blockquote>
     <p class="dedication">Len Dorfman taught programming in the Shoreham-Wading River schools from 1970 to 1999 and wrote <i>Developing Games That Learn</i> (1996). He built PAX as "a recreational, fun, and garden variety research project into cognition and machine learning." Its learning switch said <i>"The feature will be coded after PAX starts learning."</i> This is that feature.</p>
   </section>

@@ -10,6 +10,14 @@ A tribute to **Len Dorfman** (Leonard Dorfman, PhD), who taught programming in t
 >
 > — a former student
 
+On his homepage he called himself "a middle-age teacher, writer, programmer, devoted husband, father and alpha-dog wanna-be," practiced Yang Style Taijiquan and Vipassana meditation every day, and kept two quotes:
+
+> "Kindness is my religion." (the Dalai Lama, his favorite)
+>
+> "You don't have to be a Buddha to act like one." (the one he used to guide his behavior)
+
+He started PAX in 1996 as a 16-bit DOS text-mode program "for laughs," and it grew into what he called "a quirky 32-bit multithreaded perpetual work-in-progress." His archived homepage: https://web.archive.org/web/20021124200729/http://lendorfman.freeservers.com/
+
 PAX had a menu item for machine learning. Its switch said *"The feature will be coded after PAX starts learning."* PAX 2.0 is that feature.
 
 ## What is his, unchanged
